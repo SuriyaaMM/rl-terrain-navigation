@@ -96,7 +96,7 @@ def clean_and_visualize_plotly():
         fig.update_xaxes(title_text="PPO Update Step", row=3, col=2)
 
         fig.write_html(OUTPUT_FILE)
-        fig.write_image(IMAGE_OUTPUT_FILE, scale=1, format="svg", width=4096, height=4096)
+        fig.write_image(IMAGE_OUTPUT_FILE, scale=1, format="svg", width=1200, height=1200)
         print(f"✅ Successfully generated interactive plot and saved to {OUTPUT_FILE}")
         # To open the plot directly in your browser, uncomment the following line:
         # fig.show()

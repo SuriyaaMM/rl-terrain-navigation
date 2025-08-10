@@ -10,7 +10,7 @@ def visualize_3d_trajectory():
     # 1. Re-create the environment to get the terrain map, start, and goals
     #    (Use the same seed as training to ensure the map is identical)
     print("Recreating the environment...")
-    env = Terrain(seed=69)
+    env = Terrain()
     terrain_data = env.terrain.cpu().numpy()
     goals = env.goals.cpu().numpy()
     start_pos = env.start.cpu().numpy()
@@ -85,7 +85,7 @@ def visualize_3d_trajectory():
     )
 
     fig.show()
-    fig.write_html("trajectory_visualization_3d.html")
+    fig.write_image("trajectory_visualization_3d.svg")
     print("✅ Successfully saved interactive 3D trajectory plot to trajectory_visualization_3d.html")
 
 if __name__ == '__main__':

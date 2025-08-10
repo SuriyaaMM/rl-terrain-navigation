@@ -74,7 +74,7 @@ def visualize_trajectory():
     )
 
     fig.show()
-    fig.write_html("trajectory_visualization.html")
+    fig.write_image("trajectory_visualization.svg")
     print("Saved interactive trajectory plot to trajectory_visualization.html")
 
 if __name__ == '__main__':

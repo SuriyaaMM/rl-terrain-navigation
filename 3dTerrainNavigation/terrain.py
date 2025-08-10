@@ -46,14 +46,14 @@ class Terrain(object):
 
     def __init__(
         self,
-        shape: Tuple[int, int] = (32, 32),
-        initial_fuel: int = 30, 
-        fuel_exhaustion_rate: float = 1.0,
+        shape: Tuple[int, int] = (12, 12),
+        initial_fuel: int = 60, 
+        fuel_exhaustion_rate: float = 0.25,
         num_goals: int = 5,
         scale: float = 125.0, 
         octaves: int = 6, 
-        persistence: float = 0.6, 
-        lacunarity: float = 2.0, 
+        persistence: float = 1.0, 
+        lacunarity: float = 4.5, 
         seed: int = 69
     ):  
         self.gpu = torch.device("cuda")
@@ -102,15 +102,22 @@ class Terrain(object):
         self.agent_map = self.terrain.clone()
         self.agent_map[self.agent_position[0], self.agent_position[1]] = self.points.item() 
 
-        # goals spatial view
+        # goals spatial view 
         self.goal_map = self.terrain.clone()
         for i in range(self.num_goals):
             self.goal_map[self.goals[i,0], self.goals[i,1]] = self.points.item() + 1.0
 
-    
+        # required potential based reward
+        self.previous_distance_to_goal = torch.tensor(float('inf'))
+        unvisited_goals = self.goals[~self.visited_goals]
+        if len(unvisited_goals) > 0:
+            distances = torch.norm(unvisited_goals.float() - self.agent_position.float(), dim=1)
+            self.previous_distance_to_goal = torch.min(distances)
+
     def _action_helper(
         self,
-        current_elevation: torch.Tensor
+        current_elevation: torch.Tensor,
+        potential_based_reward: bool = False,
     ) -> Tuple[float, float]:
         """
         Description
@@ -121,12 +128,15 @@ class Terrain(object):
         reward = 0.0
         points = self.points.item()
         
+        # upward elevation change
         next_elevation = self.terrain[self.agent_position[0], self.agent_position[1]]
-        fuel_exhausted = 0.2 * min(0.0, (next_elevation - current_elevation).item())
-        self.fuel -= fuel_exhausted
+        elevation_change = next_elevation - current_elevation
         
-        # penalty for fuel exhaustion
-        reward -= 0.5 * fuel_exhausted
+        # only penalize when moving from lower elevation to higher elevation
+        fuel_for_climb = 0.5 * max(0, elevation_change.item())
+        self.fuel -= fuel_for_climb
+        
+        reward -= 0.1 * fuel_for_climb 
         
         # additional positive rewards 
         is_at_goal = (self.agent_position == self.goals).all(dim=1)
@@ -136,17 +146,34 @@ class Terrain(object):
             if not self.visited_goals[goal_idx]:
                 points += 1.0
                 self.visited_goals[goal_idx] = True
+                reward += 19.0
 
+        # potential based reward
+        if potential_based_reward:
+            # give a small reward for moving towards the goal
+            unvisited_goals = self.goals[~self.visited_goals]
+            if len(unvisited_goals) > 0:
+                distances_to_goals = torch.norm(unvisited_goals.float() - self.agent_position.float(), dim=1)
+                current_distance_to_goal = torch.min(distances_to_goals)
+
+                distance_delta = self.previous_distance_to_goal - current_distance_to_goal
+                reward += 0.2 * distance_delta.item() 
+
+                self.previous_distance_to_goal = current_distance_to_goal
         
-        reward += 0.5 * points
         return reward, points
     
     def reset(self) -> torch.Tensor:
-        # reset agent_position, fuel, points and visited_goals
+        # reset agent_position, fuel, points, visited_goals and previous_distance_to_goal
         self.agent_position = self.start
         self.fuel = torch.tensor(self.initial_fuel, dtype=torch.float32)
         self.points = torch.tensor(0.0, dtype=torch.float32)
         self.visited_goals.fill_(False)
+        self.previous_distance_to_goal = torch.tensor(float('inf'))
+        unvisited_goals = self.goals[~self.visited_goals]
+        if len(unvisited_goals) > 0:
+            distances = torch.norm(unvisited_goals.float() - self.agent_position.float(), dim=1)
+            self.previous_distance_to_goal = torch.min(distances)
         return self.get_state(self.agent_position)
 
     def get_state(
@@ -194,12 +221,13 @@ class Terrain(object):
 
         # invalid action
         if action not in self.actions:
-            reward -= 10
+            reward -= 10.0
+            print("Returning Due to Wrong Action!")
             return self.get_state(self.agent_position), reward, done, info
         # fuel exhausted
         if self.fuel <= 0:
             done = True
-            reward -= 5
+            reward -= 2.5
             return self.get_state(self.agent_position), reward, done, info
         # valid actions
         if action == 0:  # move up

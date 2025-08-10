@@ -21,22 +21,22 @@ class ActorCriticNetwork(nn.Module):
         self.device_cpu = torch.device("cpu")
 
         self.shared_net = nn.Sequential(
-            # Input: (4, 256, 256)
+            # input: (4, 256, 256)
             nn.Conv2d(4, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.MaxPool2d(2, 2), # -> (32, 128, 128)
             
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.MaxPool2d(2, 2), # -> (64, 64, 64)
             
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2), # -> (128, 32, 32)
+            # nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            # nn.LeakyReLU(),
+            # nn.MaxPool2d(2, 2), # -> (128, 32, 32)
             
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2), # -> (256, 16, 16)
+            # nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            # nn.LeakyReLU(),
+            # nn.MaxPool2d(2, 2), # -> (256, 16, 16)
             
             nn.Flatten()
         )
@@ -49,11 +49,17 @@ class ActorCriticNetwork(nn.Module):
                       out_features=512),
             nn.LeakyReLU(),
             nn.Linear(in_features=512,
+                      out_features=512),
+            nn.LeakyReLU(),
+            nn.Linear(in_features=512,
                       out_features=num_actions)
         )
 
         self.critic_net = nn.Sequential(
             nn.Linear(in_features=shared_output_dim,
+                      out_features=512),
+            nn.LeakyReLU(),
+            nn.Linear(in_features=512,
                       out_features=512),
             nn.LeakyReLU(),
             nn.Linear(in_features=512,
@@ -73,10 +79,15 @@ class ActorCriticNetwork(nn.Module):
         self,
         state: torch.Tensor
     ):
+        """
+        Description
+        -----------
+        invokes the actor network & samples an action 
+        """
         actor_logits, state_value = self.forward(state)
         actor_dist = torch.distributions.Categorical(logits=actor_logits)
         action = actor_dist.sample()
-        logprob = torch.tensor(actor_dist.log_prob(action))
+        logprob = actor_dist.log_prob(action)
         entropy = actor_dist.entropy()
 
         return action, state_value, logprob, entropy
@@ -86,6 +97,11 @@ class ActorCriticNetwork(nn.Module):
         states: torch.Tensor,
         actions: torch.Tensor
     ):
+        R"""
+        Description
+        -----------
+        invokes the critic network & critizes the states and actions in memory
+        """
         actor_logits, state_value = self.forward(states)
         actor_dist = torch.distributions.Categorical(logits=actor_logits)
         logprobs = actor_dist.log_prob(actions)
@@ -93,7 +109,6 @@ class ActorCriticNetwork(nn.Module):
 
         return state_value, logprobs, entropy
     
-
 class MemoryTensor(object):
 
     def __init__(self):
@@ -167,6 +182,7 @@ def train(
     env: Terrain,
     model: ActorCriticNetwork,
     optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: torch.device,
     train_iterations: int,
     replay_iterations: int,
@@ -176,7 +192,8 @@ def train(
     lmbda: float,
     clip_coeff: float,
     value_loss_coeff: float,
-    entropy_coeff: float,
+    entropy_initial: float,
+    entropy_min: float,
     save_model_path: str = "./terrain_models",
     save_data_path: str = "./terrain_data"
 ):
@@ -197,7 +214,12 @@ def train(
     best_trajectory = []
     best_episode_reward = -float('inf')
 
-    for _ in range(train_iterations):
+    entropy_coeff = entropy_initial
+
+    for i in range(train_iterations):
+        print("-"*80)
+        print(f"Training Iteration {i + 1}")
+        print("-"*80)
         # replay memory tensor
         memory = MemoryTensor()
 
@@ -210,7 +232,7 @@ def train(
             start_info = {
                 'x': env.agent_position[0].item(),
                 'y': env.agent_position[1].item(),
-                'action': -1,  # Use -1 to indicate no action was taken
+                'action': -1,  # no action was taken
                 'reward': 0.0,
                 'points': 0.0,
                 'fuel': env.fuel.item()
@@ -240,6 +262,8 @@ def train(
         rewards = torch.stack(memory.rewards).to(device)
         state_values = torch.stack(memory.state_values).to(device)
 
+        # this next state is calculated for advantage calculation
+        # becasue advantage depends on future episodes
         with torch.no_grad():
             _, next_state_value, _, _ = model.act(state.unsqueeze(0))
         
@@ -267,9 +291,10 @@ def train(
         logprobs_hist.append(logprobs.mean().item())
         entropies_hist.append(entropies.mean().item())
 
+        
         for i in range(ppo_epochs):
             
-            new_values, new_logprobs, new_entropies = model.criticize(states, actions)
+            new_values, new_logprobs, _ = model.criticize(states, actions)
 
             ratio = torch.exp(new_logprobs - logprobs)
             policy_loss1 = advantages * ratio
@@ -283,6 +308,7 @@ def train(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
 
             # history tracking
             loss_hist.append(loss.item())
@@ -294,6 +320,13 @@ def train(
 
             print(f"PPO Epoch ({i + 1}) | Loss = {loss}")
 
+        entropy_coeff = entropy_coeff = entropy_min + (entropy_initial - entropy_min) / 2 * (
+                    1 + torch.cos(torch.tensor(torch.pi * i / train_iterations))
+            )
+        entropy_coeff = entropy_coeff.item()
+        scheduler.step()
+        print(f"Entropy = {entropy_coeff}")
+        print(f"")
     os.makedirs(save_data_path, exist_ok=True)
     os.makedirs(save_model_path, exist_ok=True)
 
@@ -312,7 +345,7 @@ def train(
         "ratios" : ratios_hist,
         "policy_loss1" : policy_loss1_hist,
         "policy_loss2" : policy_loss2_hist,
-        "policy_loss" : policy_loss,
+        "policy_loss" : policy_loss_hist,
         "value_loss" : value_loss_hist,
         "loss_hist" : loss_hist
     })  
@@ -322,5 +355,7 @@ def train(
     trajectory_df.to_csv(os.path.join(save_data_path, "best_trajectory.csv"), index=False)
     replay_df.to_csv(os.path.join(save_data_path, "reply_df.csv"))
     ppo_df.to_csv(os.path.join(save_data_path, "ppo_df.csv"))
+
+    replay_df.describe()
 
     return replay_df, ppo_df

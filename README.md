@@ -54,6 +54,11 @@ The chosen hyperparameters represent a standard starting point for PPO, with a f
 | `VALUE_LOSS_COEFF` | 0.5   | Balances the actor and critic losses. 0.5 is the standard default.                                 |
 | `ENTROPY_COEFF`    | 0.01  | **Exploration Bonus**. A small value encourages the agent to explore but not at the expense of exploiting good policies. |
 
+## 5. Results
+![Analysis](./training_analysis.svg)
+![Trajectory Visualization](./trajectory_visualization.svg)
+![Trajectory Visualization 3D](./trajectory_visualization_3d.svg)
+
 ## Installation
 
 To set up the environment and run this project, you'll need Python 3.12+ and the libraries listed in `requirements.txt`.
