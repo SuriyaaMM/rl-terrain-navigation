@@ -54,10 +54,6 @@ The chosen hyperparameters represent a standard starting point for PPO, with a f
 | `VALUE_LOSS_COEFF` | 0.5   | Balances the actor and critic losses. 0.5 is the standard default.                                 |
 | `ENTROPY_COEFF`    | 0.01  | **Exploration Bonus**. A small value encourages the agent to explore but not at the expense of exploiting good policies. |
 
-## 5. Results
-![Analysis](./training_analysis.svg)
-![Trajectory Visualization](./trajectory_visualization.svg)
-![Trajectory Visualization 3D](./trajectory_visualization_3d.svg)
 
 ## Installation
 
@@ -94,7 +90,7 @@ python main.py
 
 This script generates a 6-panel plot analyzing the agent's learning curves (rewards, losses, entropy, etc.) and saves it as an interactive HTML file and a static SVG.
 
-![Analysis](./3dTerrainNavigation/training_analysis.svg)
+![Analysis](./training_analysis.svg)
 
 ```bash
 python analyze.py
@@ -108,6 +104,8 @@ This script creates a high-impact, interactive 3D visualization of the agent's p
 python trajectory_3d.py
 ```
 
+![Trajectory Visualization 3D](./trajectory_visualization_3d.svg)
+
 ### 4. Visualizing Agent Trajectory (2D Heatmap)
 
 This provides an alternative top-down view of the agent's path on a 2D heatmap of the terrain.
@@ -116,5 +114,6 @@ This provides an alternative top-down view of the agent's path on a 2D heatmap o
 python trajectory.py
 ```
 
+![Trajectory Visualization](./trajectory_visualization.svg)
 -----
 
